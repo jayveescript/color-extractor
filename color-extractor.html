@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Color Extractor</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: 'Segoe UI', system-ui, sans-serif; background: #0f0f13; color: #e8e8f0; min-height: 100vh; display: flex; flex-direction: column; align-items: center; padding: 40px 20px; }
+    h1 { font-size: 2rem; font-weight: 700; margin-bottom: 6px; background: linear-gradient(135deg, #a78bfa, #60a5fa); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+    .subtitle { color: #6b6b80; margin-bottom: 40px; font-size: 0.95rem; }
+    .upload-zone { width: 100%; max-width: 560px; border: 2px dashed #2e2e3e; border-radius: 16px; padding: 48px 24px; text-align: center; cursor: pointer; transition: border-color 0.2s, background 0.2s; background: #16161f; }
+    .upload-zone:hover, .upload-zone.drag-over { border-color: #a78bfa; background: #1c1c2a; }
+    .upload-icon { font-size: 3rem; margin-bottom: 12px; }
+    .upload-zone p { color: #6b6b80; font-size: 0.9rem; }
+    .upload-zone strong { color: #a78bfa; }
+    #file-input { display: none; }
+    .preview-section { width: 100%; max-width: 560px; margin-top: 32px; display: none; }
+    .preview-section.visible { display: block; }
+    .image-preview { width: 100%; border-radius: 12px; overflow: hidden; background: #16161f; border: 1px solid #2e2e3e; margin-bottom: 24px; }
+    .image-preview img { width: 100%; max-height: 300px; object-fit: contain; display: block; }
+    .section-label { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 1.5px; color: #6b6b80; margin-bottom: 14px; }
+    .palette-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 12px; margin-bottom: 32px; }
+    .color-card { border-radius: 12px; overflow: hidden; background: #16161f; border: 1px solid #2e2e3e; cursor: pointer; transition: transform 0.15s, box-shadow 0.15s; }
+    .color-card:hover { transform: translateY(-3px); box-shadow: 0 8px 24px rgba(0,0,0,0.4); }
+    .color-swatch { height: 80px; width: 100%; }
+    .color-info { padding: 10px 10px 12px; }
+    .color-hex { font-size: 0.8rem; font-weight: 600; font-family: monospace; color: #e8e8f0; margin-bottom: 2px; }
+    .color-rgb { font-size: 0.7rem; color: #6b6b80; font-family: monospace; }
+    .color-pct { font-size: 0.7rem; color: #a78bfa; margin-top: 2px; }
+    .copied-toast { position: fixed; bottom: 32px; left: 50%; transform: translateX(-50%) translateY(20px); background: #a78bfa; color: #0f0f13; padding: 10px 20px; border-radius: 999px; font-size: 0.85rem; font-weight: 600; opacity: 0; transition: opacity 0.2s, transform 0.2s; pointer-events: none; }
+    .copied-toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+    .color-strip { display: flex; height: 48px; border-radius: 10px; overflow: hidden; margin-bottom: 24px; }
+    .strip-segment { cursor: pointer; }
+    canvas { display: none; }
+    .reset-btn { display: inline-flex; align-items: center; gap: 6px; background: #1e1e2e; border: 1px solid #2e2e3e; color: #a78bfa; padding: 8px 18px; border-radius: 8px; font-size: 0.85rem; cursor: pointer; margin-bottom: 24px; transition: background 0.2s; }
+    .reset-btn:hover { background: #2a2a3e; }
+    .count-selector { display: flex; align-items: center; gap: 10px; margin-bottom: 20px; }
+    .count-selector label { color: #6b6b80; font-size: 0.85rem; }
+    .count-selector select { background: #1e1e2e; border: 1px solid #2e2e3e; color: #e8e8f0; padding: 6px 10px; border-radius: 8px; font-size: 0.85rem; cursor: pointer; }
+  </style>
+</head>
+<body>
+  <h1>Color Extractor</h1>
+  <p class="subtitle">Upload an image to extract its dominant color palette</p>
+  <div class="upload-zone" id="upload-zone">
+    <div class="upload-icon">🎨</div>
+    <p><strong>Click to upload</strong> or drag &amp; drop</p>
+    <p style="margin-top:6px">PNG, JPG, GIF, WEBP supported</p>
+    <input type="file" id="file-input" accept="image/*" />
+  </div>
+  <canvas id="canvas"></canvas>
+  <div class="preview-section" id="preview-section">
+    <button class="reset-btn" id="reset-btn">&#x2715; Remove image</button>
+    <div class="image-preview"><img id="preview-img" src="" alt="Preview" /></div>
+    <div class="count-selector">
+      <label>Number of colors:</label>
+      <select id="color-count">
+        <option value="6">6</option>
+        <option value="8" selected>8</option>
+        <option value="10">10</option>
+        <option value="12">12</option>
+        <option value="16">16</option>
+      </select>
+    </div>
+    <p class="section-label">Color Strip</p>
+    <div class="color-strip" id="color-strip"></div>
+    <p class="section-label">Dominant Palette - click any card to copy hex</p>
+    <div class="palette-grid" id="palette-grid"></div>
+  </div>
+  <div class="copied-toast" id="toast">Copied!</div>
+  <script>
+    const uploadZone=document.getElementById('upload-zone'),fileInput=document.getElementById('file-input'),previewSection=document.getElementById('preview-section'),previewImg=document.getElementById('preview-img'),paletteGrid=document.getElementById('palette-grid'),colorStrip=document.getElementById('color-strip'),canvas=document.getElementById('canvas'),ctx=canvas.getContext('2d'),toast=document.getElementById('toast'),resetBtn=document.getElementById('reset-btn'),colorCount=document.getElementById('color-count');
+    let currentImage=null;
+    uploadZone.addEventListener('click',()=>fileInput.click());
+    fileInput.addEventListener('change',e=>loadImage(e.target.files[0]));
+    uploadZone.addEventListener('dragover',e=>{e.preventDefault();uploadZone.classList.add('drag-over');});
+    uploadZone.addEventListener('dragleave',()=>uploadZone.classList.remove('drag-over'));
+    uploadZone.addEventListener('drop',e=>{e.preventDefault();uploadZone.classList.remove('drag-over');const f=e.dataTransfer.files[0];if(f&&f.type.startsWith('image/'))loadImage(f);});
+    resetBtn.addEventListener('click',()=>{previewSection.classList.remove('visible');fileInput.value='';currentImage=null;});
+    colorCount.addEventListener('change',()=>{if(currentImage)extractColors(currentImage);});
+    function loadImage(file){const reader=new FileReader();reader.onload=e=>{const img=new Image();img.onload=()=>{currentImage=img;previewImg.src=e.target.result;previewSection.classList.add('visible');extractColors(img);};img.src=e.target.result;};reader.readAsDataURL(file);}
+    function extractColors(img){const maxDim=150;let w=img.width,h=img.height;if(w>maxDim||h>maxDim){const r=Math.min(maxDim/w,maxDim/h);w=Math.floor(w*r);h=Math.floor(h*r);}canvas.width=w;canvas.height=h;ctx.drawImage(img,0,0,w,h);const data=ctx.getImageData(0,0,w,h).data;const pixels=[];for(let i=0;i<data.length;i+=4){if(data[i+3]<128)continue;pixels.push([data[i],data[i+1],data[i+2]]);}const k=parseInt(colorCount.value);renderPalette(kMeans(pixels,k,20));}
+    function kMeans(pixels,k,iterations){const sample=[];const step=Math.max(1,Math.floor(pixels.length/2000));for(let i=0;i<pixels.length;i+=step)sample.push(pixels[i]);let centroids=[sample[Math.floor(Math.random()*sample.length)]];while(centroids.length<k){const dists=sample.map(p=>Math.min(...centroids.map(c=>dist2(p,c))));const sum=dists.reduce((a,b)=>a+b,0);let r=Math.random()*sum;let added=false;for(let i=0;i<sample.length;i++){r-=dists[i];if(r<=0){centroids.push(sample[i]);added=true;break;}}if(!added)centroids.push(sample[sample.length-1]);}for(let iter=0;iter<iterations;iter++){const clusters=Array.from({length:k},()=>[]);for(const p of sample){let best=0,bestD=Infinity;for(let i=0;i<k;i++){const d=dist2(p,centroids[i]);if(d<bestD){bestD=d;best=i;}}clusters[best].push(p);}centroids=clusters.map((cl,i)=>{if(!cl.length)return centroids[i];const avg=[0,0,0];for(const p of cl){avg[0]+=p[0];avg[1]+=p[1];avg[2]+=p[2];}return avg.map(v=>Math.round(v/cl.length));});}const counts=new Array(k).fill(0);for(const p of sample){let best=0,bestD=Infinity;for(let i=0;i<k;i++){const d=dist2(p,centroids[i]);if(d<bestD){bestD=d;best=i;}}counts[best]++;}const total=counts.reduce((a,b)=>a+b,0);return centroids.map((c,i)=>({rgb:c,count:counts[i],pct:Math.round(counts[i]/total*100)})).sort((a,b)=>b.count-a.count);}
+    function dist2(a,b){return(a[0]-b[0])**2+(a[1]-b[1])**2+(a[2]-b[2])**2;}
+    function toHex(rgb){return'#'+rgb.map(v=>v.toString(16).padStart(2,'0')).join('');}
+    function renderPalette(palette){colorStrip.innerHTML='';palette.forEach(({rgb,pct})=>{const seg=document.createElement('div');seg.className='strip-segment';seg.style.flex=pct;seg.style.background=`rgb(${rgb.join(',')})`;colorStrip.appendChild(seg);});paletteGrid.innerHTML='';palette.forEach(({rgb,pct})=>{const hex=toHex(rgb);const card=document.createElement('div');card.className='color-card';card.innerHTML=`<div class="color-swatch" style="background:${hex}"></div><div class="color-info"><div class="color-hex">${hex.toUpperCase()}</div><div class="color-rgb">rgb(${rgb.join(', ')})</div><div class="color-pct">${pct}% of image</div></div>`;card.addEventListener('click',()=>{navigator.clipboard.writeText(hex.toUpperCase()).then(()=>{toast.textContent=`Copied ${hex.toUpperCase()}`;toast.classList.add('show');setTimeout(()=>toast.classList.remove('show'),2000);});});paletteGrid.appendChild(card);});}
+  </script>
+</body>
+</html>
